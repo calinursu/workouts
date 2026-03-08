@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Workout Calendar</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 24px;
+
+        --border-color: #d1d1d1;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .calendar {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+      }
+
+      .sticky-col-headers {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: white;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 6px;
+      }
+
+      .col-header {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #888;
+        padding: 8px 0;
+      }
+
+      .week-label {
+        grid-column: 1 / -1;
+        font-size: 11px;
+        color: #555;
+        padding: 4px 2px;
+        border-top: 1px solid var(--border-color);
+        position: sticky;
+        top: var(--col-headers-height, 38px);
+        z-index: 5;
+        background: white;
+      }
+
+      .week-label:first-child {
+        border-top: none;
+      }
+
+      .tile {
+        position: relative;
+        border-radius: 6px;
+        height: 160px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border: 1px solid var(--border-color);
+        cursor: default;
+      }
+
+      .tile.empty {
+        opacity: 0.5;
+      }
+
+      .tile.rest {
+        background: repeating-linear-gradient(
+          -45deg,
+          white,
+          white 6px,
+          var(--border-color) 3%
+        );
+      }
+
+      .tile.active {
+      }
+
+      .tile.team-friday {
+      }
+
+      .tile.wod {
+      }
+
+      .day-number {
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .tile-title {
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.2;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .tile.has-workout {
+        cursor: pointer;
+      }
+
+      .tile.has-workout:hover {
+        background-color: #f5f5f5;
+      }
+
+      #workout-dialog {
+        align-self: center;
+        position: fixed;
+        margin: 1.25rem auto;
+        height: calc(100% - 144px);
+        width: 100%;
+        max-width: 960px;
+        border: none;
+        border-radius: 12px;
+      }
+
+      #workout-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(2px);
+      }
+
+      #workout-dialog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      #workout-dialog-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      #workout-dialog-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 20px;
+        padding: 0 4px;
+        outline: none;
+      }
+
+      #workout-dialog-close:hover {
+        color: #333;
+      }
+
+      #workout-dialog-body {
+        padding: 20px;
+        overflow-y: auto;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        font-family: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Workout Calendar</h1>
+    <div class="sticky-col-headers" id="col-headers"></div>
+    <div class="calendar" id="calendar"></div>
+
+    <dialog id="workout-dialog">
+      <div id="workout-dialog-header">
+        <span id="workout-dialog-title"></span>
+        <button
+          id="workout-dialog-close"
+          commandfor="workout-dialog"
+          command="close"
+        >
+          ✕
+        </button>
+      </div>
+      <div id="workout-dialog-body"></div>
+    </dialog>
+
+    <script>
+      const EXCLUDED_MONTHS = new Set(["2025-05", "2025-06", "2025-07"]);
+
+      function parseDate(str) {
+        const parts = str.split(".");
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const y = 2000 + parseInt(parts[2], 10);
+        return new Date(y, m - 1, d);
+      }
+
+      function getMonday(date) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        const day = d.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        d.setDate(d.getDate() + diff);
+        return d;
+      }
+
+      function dateKey(date) {
+        return (
+          date.getFullYear() +
+          "-" +
+          String(date.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(date.getDate()).padStart(2, "0")
+        );
+      }
+
+      function monthLabel(date) {
+        return date.toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        });
+      }
+
+      function decodeHtml(str) {
+        const el = document.createElement("textarea");
+        el.innerHTML = str;
+        return el.value;
+      }
+
+      function tileClass(title) {
+        if (!title || title === "N/A") return "rest";
+        const t = title.toLowerCase();
+        if (t === "team friday") return "team-friday";
+        if (t === "wod") return "wod";
+        return "active";
+      }
+
+      document.getElementById("workout-dialog").addEventListener("click", (e) => {
+        if (e.target === e.currentTarget) e.currentTarget.close();
+      });
+
+      fetch("workouts.json")
+        .then((r) => r.json())
+        .then((workouts) => {
+          const map = {};
+          workouts.forEach((w) => {
+            const date = parseDate(w.date);
+            map[dateKey(date)] = w;
+          });
+
+          const dates = workouts.map((w) => parseDate(w.date));
+          const minDate = new Date(Math.min(...dates));
+          const maxDate = new Date(Math.max(...dates));
+
+          const cal = document.getElementById("calendar");
+          const colHeaders = document.getElementById("col-headers");
+          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+          // Column headers in sticky row
+          days.forEach((d) => {
+            const el = document.createElement("div");
+            el.className = "col-header";
+            el.textContent = d;
+            colHeaders.appendChild(el);
+          });
+
+          // Measure sticky header height for week-label top offset
+          requestAnimationFrame(() => {
+            const h = colHeaders.offsetHeight;
+            document.documentElement.style.setProperty(
+              "--col-headers-height",
+              h + "px",
+            );
+          });
+
+          // Collect all months between min and max, newest first
+          const totalMonths =
+            (maxDate.getFullYear() - minDate.getFullYear()) * 12 +
+            (maxDate.getMonth() - minDate.getMonth()) +
+            1;
+          const months = Array.from({ length: totalMonths }, (_, i) =>
+            new Date(maxDate.getFullYear(), maxDate.getMonth() - i, 1),
+          );
+
+          months.forEach((monthStart) => {
+            const monthKey =
+              monthStart.getFullYear() +
+              "-" +
+              String(monthStart.getMonth() + 1).padStart(2, "0");
+            if (EXCLUDED_MONTHS.has(monthKey)) return;
+
+            const labelEl = document.createElement("div");
+            labelEl.className = "week-label";
+            labelEl.textContent = monthLabel(monthStart);
+            cal.appendChild(labelEl);
+
+            const daysInMonth = new Date(
+              monthStart.getFullYear(),
+              monthStart.getMonth() + 1,
+              0,
+            ).getDate();
+
+            for (let d = 1; d <= daysInMonth; d++) {
+              const day = new Date(monthStart.getFullYear(), monthStart.getMonth(), d);
+              const workout = map[dateKey(day)];
+              const tile = document.createElement("div");
+
+              const num = document.createElement("div");
+              num.className = "day-number";
+              num.textContent = d;
+              tile.appendChild(num);
+
+              if (!workout) {
+                tile.className = "tile empty";
+              } else {
+                const cls = tileClass(workout.title);
+                tile.className = "tile " + cls + " has-workout";
+
+                const titleEl = document.createElement("div");
+                titleEl.className = "tile-title";
+                titleEl.textContent =
+                  workout.title === "N/A" ? "Rest" : decodeHtml(workout.title);
+                tile.appendChild(titleEl);
+
+                tile.addEventListener("click", () => {
+                  const dialog = document.getElementById("workout-dialog");
+                  document.getElementById("workout-dialog-title").textContent =
+                    decodeHtml(
+                      workout.title === "N/A" ? "Rest" : workout.title,
+                    ) +
+                    " — " +
+                    day.toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+                  document.getElementById("workout-dialog-body").innerHTML =
+                    decodeHtml(workout.workout ?? "").replace(/\[[\s[]*$/, "");
+                  dialog.showModal();
+                });
+              }
+
+              cal.appendChild(tile);
+            }
+
+            // Trailing empty tiles to complete the last row
+            const trailingEmpties = (7 - (daysInMonth % 7)) % 7;
+            for (let i = 0; i < trailingEmpties; i++) {
+              const empty = document.createElement("div");
+              empty.className = "tile empty";
+              cal.appendChild(empty);
+            }
+          });
+        })
+        .catch((err) => {
+          document.getElementById("calendar").textContent =
+            "Error loading workouts.json: " + err.message;
+        });
+    </script>
+  </body>
+</html>
