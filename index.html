@@ -326,15 +326,15 @@
                 tile.className = "tile empty";
               } else {
                 const cls = tileClass(workout.title);
-                tile.className = "tile " + cls + " has-workout";
+                const isRest = workout.title === "N/A";
+                tile.className = "tile " + cls + (isRest ? "" : " has-workout");
 
                 const titleEl = document.createElement("div");
                 titleEl.className = "tile-title";
-                titleEl.textContent =
-                  workout.title === "N/A" ? "Rest" : decodeHtml(workout.title);
+                titleEl.textContent = isRest ? "Rest" : decodeHtml(workout.title);
                 tile.appendChild(titleEl);
 
-                tile.addEventListener("click", () => {
+                if (!isRest) tile.addEventListener("click", () => {
                   const dialog = document.getElementById("workout-dialog");
                   document.getElementById("workout-dialog-title").textContent =
                     decodeHtml(
@@ -350,7 +350,7 @@
                     decodeHtml(workout.workout ?? "").replace(/\[[\s[]*$/, "");
                   dialog.showModal();
                 });
-              }
+                }
 
               cal.appendChild(tile);
             }
